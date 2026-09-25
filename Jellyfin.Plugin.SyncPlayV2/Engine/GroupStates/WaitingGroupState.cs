@@ -535,13 +535,12 @@ namespace Jellyfin.Plugin.SyncPlayV2.Engine.GroupStates
                         // Client that was buffering is recovering, notifying others to resume.
                         context.LastActivity = currentTime.AddTicks(delayTicks);
                         var command = context.NewSyncPlayCommand(SendCommandType.Unpause);
-                        var filter = SyncPlayBroadcastType.AllExceptCurrentSession;
-                        if (!request.IsPlaying)
-                        {
-                            filter = SyncPlayBroadcastType.AllGroup;
-                        }
 
-                        context.SendCommand(session, filter, command, cancellationToken);
+                        // Fix divergence (VENDORED.md): the recovering member gets
+                        // the Unpause too, even when it is already playing — it is
+                        // behind the group, so a scheduled Unpause does not seek it,
+                        // and it is what ends jellyfin-web's "schedule-play" indicator.
+                        context.SendCommand(session, SyncPlayBroadcastType.AllGroup, command, cancellationToken);
 
                         _logger.LogInformation("Session {SessionId} is recovering, group {GroupId} will resume in {Delay} seconds.", session.Id, context.GroupId.ToString(), TimeSpan.FromTicks(delayTicks).TotalSeconds);
                     }
