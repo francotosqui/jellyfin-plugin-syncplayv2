@@ -536,11 +536,24 @@ namespace Jellyfin.Plugin.SyncPlayV2.Engine.GroupStates
                         context.LastActivity = currentTime.AddTicks(delayTicks);
                         var command = context.NewSyncPlayCommand(SendCommandType.Unpause);
 
-                        // Fix divergence (VENDORED.md): the recovering member gets
+                        // Fix divergence (VENDORED.md): a v1 recovering member gets
                         // the Unpause too, even when it is already playing — it is
-                        // behind the group, so a scheduled Unpause does not seek it,
-                        // and it is what ends jellyfin-web's "schedule-play" indicator.
-                        context.SendCommand(session, SyncPlayBroadcastType.AllGroup, command, cancellationToken);
+                        // behind the group, so jellyfin-web's scheduleUnpause does
+                        // not seek it, and it is what ends the "schedule-play"
+                        // indicator. A v2 member that is already playing keeps
+                        // upstream's filter: a v2 client lines its player up on a
+                        // scheduled Unpause's PositionTicks when it arms it, which
+                        // would jump a playing member ahead of the group before
+                        // the resume. Measured against Kofin's schedule().
+                        var filter = SyncPlayBroadcastType.AllGroup;
+                        if (request.IsPlaying
+                            && context is IGroupStateContextV2 v2
+                            && v2.IsV2Member(session.Id))
+                        {
+                            filter = SyncPlayBroadcastType.AllExceptCurrentSession;
+                        }
+
+                        context.SendCommand(session, filter, command, cancellationToken);
 
                         _logger.LogInformation("Session {SessionId} is recovering, group {GroupId} will resume in {Delay} seconds.", session.Id, context.GroupId.ToString(), TimeSpan.FromTicks(delayTicks).TotalSeconds);
                     }
